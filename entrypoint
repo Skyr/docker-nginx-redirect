@@ -1,0 +1,36 @@
+#!/bin/sh
+
+cp -r /etc/nginx /tmp/
+sed -i "s#access_log.*\$#access_log /dev/stdout;#" /tmp/nginx/nginx.conf
+sed -i "s#error_log.*\$#error_log /dev/stdout warn;#" /tmp/nginx/nginx.conf
+sed -i "s#/etc/nginx#/tmp/nginx#" /tmp/nginx/nginx.conf
+
+CFG=/tmp/nginx/conf.d/default.conf
+
+echo "server {" > $CFG
+echo "    listen 8080 default_server;" >> $CFG
+echo "    server_name _;" >> $CFG
+echo "    deny all;" >> $CFG
+echo "}" >> $CFG
+echo "" >> $CFG
+
+for i in `printenv | sed "s/=.*$//" | grep "^REDIR_FROM_"` ; do
+  eval "FROM=\${$i}"
+  eval "TO=\${REDIR_TO_${i#REDIR_FROM_}}"
+  eval "PERMANENT=\${REDIR_PERMANENT_${i#REDIR_FROM_}}"
+  if [ "$PERMANENT" == "true" ] || [ "$PERMANENT" == "yes" ] ; then
+    REDIR="permanent"
+  else
+    REDIR="redirect"
+  fi
+  echo "$FROM -> $TO $REDIR"
+  echo "server {" >> $CFG
+  echo "    listen 8080;" >> $CFG
+  echo "    server_name ${FROM};" >> $CFG
+  echo "    rewrite ^/(.*)\$ https://${TO}/\$1 ${REDIR};" >> $CFG
+  echo "}" >> $CFG
+  echo "" >> $CFG
+done
+
+
+exec nginx -c "/tmp/nginx/nginx.conf" -g "daemon off;"
